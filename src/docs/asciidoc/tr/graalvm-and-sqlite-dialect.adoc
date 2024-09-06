@@ -1,0 +1,177 @@
+
+== GraalVM Java Compiler'in İndirilip Kurulması
+
+https://download.oracle.com/graalvm/21/latest/graalvm-jdk-21_windows-x64_bin.zip
+
+konumundan bilgisayara indirildikten sonra arşivin içeriği buradaki örnekte
+
+C:\graalvm\
+
+adında bir klasör oluşturup
+
+C:\graalvm\graalvm-jdk-21.0.4+8.1
+
+olarak görünecek biçimde yapıştırılır. Böylece sonradan diğer graalvm sürümleri de aynı C:\graalvm\ klasörüne konularak düzenli durmaları sağlanabilir.
+
+== Ortam Değişkenlerinin Ayarlanması
+
+=== Windows 11 Sistem Ortam Değişkenlerinin Ayarlanması
+
+==== GRAALVM_HOME =
+C:\graalvm\graalvm-jdk-21.0.4+8.1
+
+==== JAVA_HOME =
+C:\graalvm\graalvm-jdk-21.0.4+8.1
+
+==== Path +=
+C:\graalvm\graalvm-jdk-21.0.4+8.1\bin
+
+== SQLiteDialect Hatasını Çözen Kodlar
+
+
+Buraya kadarki işlemler yapıldıktan sonra GraalVM çalışır durumda olmaktadır.
+Ancak, projeye sonradan SQLite veritabanı erişimi eklediğimiz için, jar dosyası olarak çalışıyor iken, native olarak başarıyla derlenmesine de rağmen, oluşan derlenmiş dosya çalıştırıldığında hata verecektir. Sebebi SQLiteDialect sınıfını GraalVm'nin bulamamasıdır çünkü kodlarda değil, application.propertites dosyasında belirtilmiştir. Bulması için aşağıda belirtilen kodlar eklenmelidir.
+
+
+=== DatabaseRuntimeHintsRegistrar.java
+
+[source, java]
+-----
+import org.hibernate.community.dialect.SQLiteDialect;
+import org.springframework.aot.hint.MemberCategory;
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.RuntimeHintsRegistrar;
+
+public class DatabaseRuntimeHintsRegistrar implements RuntimeHintsRegistrar {
+    @Override
+    public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+        // Change this to use your database Dialect class when using other databases
+        hints
+                .reflection()
+                .registerType(SQLiteDialect.class, MemberCategory.values());
+    }
+}
+-----
+
+=== Spring Boot Uygulamasını Başlatan Metoda Eklenen Annotation
+[source, java]
+-----
+@ImportRuntimeHints(DatabaseRuntimeHintsRegistrar.class)
+-----
+
+=== application.properties Dosyasındaki SQLite Ayarları
+[source,properties,indent=0,subs="verbatim,attributes,macros"]
+-----
+spring.datasource.url=jdbc:sqlite:C:/Users/u/Desktop/jobsearch.sqlite
+driverClassName=org.sqlite.JDBC
+spring.jpa.show-sql=true
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.database-platform=org.hibernate.community.dialect.SQLiteDialect
+
+#Actuator
+management.endpoints.web.exposure.include=*
+management.endpoint.health.show-details=always
+-----
+
+=== pom.xml Dosyasının İçeriği
+
+[source, xml]
+-----
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<modelVersion>4.0.0</modelVersion>
+<parent>
+<groupId>org.springframework.boot</groupId>
+<artifactId>spring-boot-starter-parent</artifactId>
+<version>3.3.3</version>
+<relativePath /> <!-- lookup parent from repository -->
+</parent>
+<groupId>com.app</groupId>
+<artifactId>firstJopApp</artifactId>
+<version>0.0.1-SNAPSHOT</version>
+<name>firstJopApp</name>
+<description>Job application</description>
+<properties>
+<java.version>17</java.version>
+</properties>
+<dependencies>
+<dependency>
+<groupId>org.springframework.boot</groupId>
+<artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+<dependency>
+<groupId>org.springframework.boot</groupId>
+<artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+
+		<!-- https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-actuator -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.hibernate.orm</groupId>
+			<artifactId>hibernate-community-dialects</artifactId>
+			<version>6.4.4.Final</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.xerial</groupId>
+			<artifactId>sqlite-jdbc</artifactId>
+			<version>3.46.0.0</version>
+		</dependency>
+
+
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-devtools -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-devtools</artifactId>
+		</dependency>
+
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.graalvm.buildtools</groupId>
+				<artifactId>native-maven-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
+-----
+
+== Spring Boot Uygulamasının Native Olarak Derlenmesi
+
+Spring boot uygulamasında mvnw ve mvnw.cmd dosyalarının bulunduğu klasörde:
+
+=== Windows 11 İşletim Sisteminde Uygulamayı Exe Dosyası Yapmak
+PowerShell penceresi açılır ve
+
+./mvnw -Pnative native:compile -DskipTests
+
+komutu verilir. Konsoldaki yazılar birkaç dakika sonra BUILD SUCCESS ile sonlanırsa derleme işlemi hatasız bitmiştir. Derleme zamanı hatası olmamıştır. Buraya kadar anlatılanların aynısı yapıldıysa olmayacaktır.
+
+==== Exe Dosyası ve Bağlantılı Dosyalar target/ Klasöründe Oluşmuştur
+
+target klasöründe spring boot uygulaması ile aynı isimde oluşan exe dosyası çalıştırılır.
+
+Exe halindeki spring boot uygulaması artık Java kurulu olmayan Windows 11 kurulu bilgisayarlarda çalışacaktır, hem de yaklaşık olarak 10 ila 40 kat arası daha hızlı başlayacaktır.
+
+
+
